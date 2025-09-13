@@ -12,6 +12,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 
+from social_media.permissions import IsOwnerOrReadOnly
 from social_media.serializers import (
     UserRegistrationSerializer,
     ProfileSerializer,
@@ -33,8 +34,12 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self) -> list[BasePermission]:
         if self.action == "create":
-            return [AllowAny()]
-        return [IsAuthenticated()]
+            self.permission_classes = [AllowAny]
+        elif self.action in ["update", "partial_update", "destroy"]:
+            self.permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+        else:
+            self.permission_classes = [IsAuthenticated]
+        return [permission() for permission in self.permission_classes]
 
     @action(
         detail=False,
