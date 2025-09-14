@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import QuerySet, Count
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import (
     IsAuthenticated,
     AllowAny,
@@ -13,7 +14,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 
-from social_media.models import Post
+from social_media.models import Post, Comment
 from social_media.permissions import IsOwnerOrReadOnly
 from social_media.serializers import (
     UserRegistrationSerializer,
@@ -22,6 +23,7 @@ from social_media.serializers import (
     PostListSerializer,
     PostDetailSerializer,
     PostSerializer,
+    CommentSerializer,
 )
 
 User = get_user_model()
@@ -95,3 +97,26 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer: Serializer) -> None:
         serializer.save(user=self.request.user)
+
+
+class CommentViewSet(viewsets.ModelViewSet):
+    serializer_class = CommentSerializer
+
+    def get_queryset(self) -> QuerySet:
+        post_pk = self.kwargs.get("post_pk")
+        post = get_object_or_404(Post, pk=post_pk)
+        return Comment.objects.filter(post=post).select_related(
+            "user__profile"
+        )
+
+    def get_permissions(self) -> list[BasePermission]:
+        if self.action in ["update", "partial_update", "destroy"]:
+            self.permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+        else:
+            self.permission_classes = [IsAuthenticated]
+        return [permission() for permission in self.permission_classes]
+
+    def perform_create(self, serializer: Serializer) -> None:
+        post_pk = self.kwargs.get("post_pk")
+        post = get_object_or_404(Post, pk=post_pk)
+        serializer.save(user=self.request.user, post=post)
