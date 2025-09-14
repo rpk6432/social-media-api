@@ -1,6 +1,7 @@
 from typing import Type
 
 from django.contrib.auth import get_user_model
+from django.db.models import QuerySet, Count
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import (
@@ -12,11 +13,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 
+from social_media.models import Post
 from social_media.permissions import IsOwnerOrReadOnly
 from social_media.serializers import (
     UserRegistrationSerializer,
     ProfileSerializer,
     UserSerializer,
+    PostListSerializer,
+    PostDetailSerializer,
+    PostSerializer,
 )
 
 User = get_user_model()
@@ -60,3 +65,33 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(UserSerializer(user).data)
+
+
+class PostViewSet(viewsets.ModelViewSet):
+    def get_queryset(self) -> QuerySet:
+        queryset = Post.objects.annotate(
+            like_count=Count("likes", distinct=True),
+            comment_count=Count("comments", distinct=True),
+        ).select_related("user__profile")
+
+        if self.action == "retrieve":
+            queryset = queryset.prefetch_related("comments__user__profile")
+
+        return queryset
+
+    def get_serializer_class(self) -> Type[Serializer]:
+        if self.action == "list":
+            return PostListSerializer
+        if self.action == "retrieve":
+            return PostDetailSerializer
+        return PostSerializer
+
+    def get_permissions(self) -> list[BasePermission]:
+        if self.action in ["update", "partial_update", "destroy"]:
+            self.permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+        else:
+            self.permission_classes = [IsAuthenticated]
+        return [permission() for permission in self.permission_classes]
+
+    def perform_create(self, serializer: Serializer) -> None:
+        serializer.save(user=self.request.user)

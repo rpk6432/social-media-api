@@ -71,7 +71,7 @@ class PostListSerializer(PostSerializer):
     likes_count = serializers.IntegerField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True)
 
-    class Meta:
+    class Meta(PostSerializer.Meta):
         fields = PostSerializer.Meta.fields + (
             "user",
             "likes_count",
@@ -82,5 +82,5 @@ class PostListSerializer(PostSerializer):
 class PostDetailSerializer(PostListSerializer):
     comments = CommentSerializer(read_only=True, many=True)
 
-    class Meta:
+    class Meta(PostListSerializer.Meta):
         fields = PostSerializer.Meta.fields + ("comments",)
