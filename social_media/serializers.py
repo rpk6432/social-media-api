@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from .models import Profile, Comment, Post
+from .models import Profile, Comment, Post, Follow
 
 User = get_user_model()
 
@@ -84,3 +84,29 @@ class PostDetailSerializer(PostListSerializer):
 
     class Meta(PostListSerializer.Meta):
         fields = PostSerializer.Meta.fields + ("comments",)
+
+
+class UserPublicInfoSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(
+        source="profile.profile_picture", read_only=True
+    )
+
+    class Meta:
+        model = User
+        fields = ("id", "username", "profile_picture")
+
+
+class FollowerSerializer(serializers.ModelSerializer):
+    follower = UserPublicInfoSerializer(read_only=True)
+
+    class Meta:
+        model = Follow
+        fields = ("follower", "created_at")
+
+
+class FollowingSerializer(serializers.ModelSerializer):
+    following = UserPublicInfoSerializer(read_only=True)
+
+    class Meta:
+        model = Follow
+        fields = ("following", "created_at")

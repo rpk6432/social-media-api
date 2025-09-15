@@ -24,6 +24,8 @@ from social_media.serializers import (
     PostDetailSerializer,
     PostSerializer,
     CommentSerializer,
+    FollowerSerializer,
+    FollowingSerializer,
 )
 
 User = get_user_model()
@@ -115,6 +117,22 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(
             {"detail": "Successfully unfollowed the user."},
         )
+
+    @action(methods=["GET"], detail=True, permission_classes=[IsAuthenticated])
+    def followers(self, request: Request, pk: int | None = None) -> Response:
+        """Get a list of users who follow the specified user."""
+        user = self.get_object()
+        followers_qs = user.followers.select_related("follower__profile")
+        serializer = FollowerSerializer(followers_qs, many=True)
+        return Response(serializer.data)
+
+    @action(methods=["GET"], detail=True, permission_classes=[IsAuthenticated])
+    def following(self, request: Request, pk: int | None = None) -> Response:
+        """Get a list of users the specified user is following."""
+        user = self.get_object()
+        following_qs = user.following.select_related("following__profile")
+        serializer = FollowingSerializer(following_qs, many=True)
+        return Response(serializer.data)
 
 
 class PostViewSet(viewsets.ModelViewSet):
