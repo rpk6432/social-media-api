@@ -136,19 +136,38 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class PostViewSet(viewsets.ModelViewSet):
-    def get_queryset(self) -> QuerySet:
-        queryset = Post.objects.annotate(
+    def _get_base_queryset(self) -> QuerySet:
+        return Post.objects.annotate(
             like_count=Count("likes", distinct=True),
             comment_count=Count("comments", distinct=True),
         ).select_related("user__profile")
 
-        if self.action == "retrieve":
-            queryset = queryset.prefetch_related("comments__user__profile")
+    def _get_feed_queryset(self) -> QuerySet:
+        """
+        Return queryset for the user's personalized feed.
+        """
+        user = self.request.user
+        following_ids = user.following.values_list("following_id", flat=True)
+        author_ids = list(following_ids) + [user.id]
 
-        return queryset
+        return self._get_base_queryset().filter(user_id__in=author_ids)
+
+    def get_queryset(self) -> QuerySet:
+        if self.action == "list":
+            user = self.request.user
+            if user.is_authenticated:
+                return self._get_feed_queryset()
+            return self._get_base_queryset().none()
+
+        if self.action == "retrieve":
+            return self._get_base_queryset().prefetch_related(
+                "comments__user__profile"
+            )
+
+        return self._get_base_queryset()
 
     def get_serializer_class(self) -> Type[Serializer]:
-        if self.action == "list":
+        if self.action in ["list", "all_posts"]:
             return PostListSerializer
         if self.action == "retrieve":
             return PostDetailSerializer
@@ -165,7 +184,26 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     @action(
-        methods=["post"], detail=True, permission_classes=[IsAuthenticated]
+        methods=["GET"],
+        detail=False,
+        permission_classes=[IsAuthenticated],
+        url_path="all",
+    )
+    def all_posts(self, request: Request, *args, **kwargs) -> Response:
+        """
+        Custom action for the global feed
+        """
+        queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(
+        methods=["POST"], detail=True, permission_classes=[IsAuthenticated]
     )
     def like(self, request: Request, pk: int | None = None) -> Response:
         """Add a like to the post"""
@@ -183,7 +221,7 @@ class PostViewSet(viewsets.ModelViewSet):
         )
 
     @action(
-        methods=["post"], detail=True, permission_classes=[IsAuthenticated]
+        methods=["POST"], detail=True, permission_classes=[IsAuthenticated]
     )
     def unlike(self, request: Request, pk: int | None = None) -> Response:
         """Remove a like from the post"""
