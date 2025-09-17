@@ -13,6 +13,11 @@ from rest_framework.permissions import (
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import (
+    RefreshToken,
+    TokenError,
+)
 
 from social_media.models import Post, Comment, Like, Follow
 from social_media.permissions import IsOwnerOrReadOnly
@@ -261,3 +266,32 @@ class CommentViewSet(viewsets.ModelViewSet):
         post_pk = self.kwargs.get("post_pk")
         post = get_object_or_404(Post, pk=post_pk)
         serializer.save(user=self.request.user, post=post)
+
+
+class LogoutView(APIView):
+    """
+    Logout endpoint.
+    Accepts a refresh token and blacklists it.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        refresh_token = request.data.get("refresh")
+        if not refresh_token:
+            return Response(
+                {"detail": "Refresh token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+            return Response(
+                {"detail": "You have been logged out."},
+                status=status.HTTP_200_OK,
+            )
+        except TokenError:
+            return Response(
+                {"detail": "Token is invalid or expired."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

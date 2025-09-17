@@ -23,6 +23,8 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 
+from social_media.views import LogoutView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("social_media.urls", namespace="social_media")),
@@ -33,4 +35,5 @@ urlpatterns = [
         "api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"
     ),
     path("api/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
+    path("api/token/logout/", LogoutView.as_view(), name="logout"),
 ]
