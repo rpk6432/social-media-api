@@ -74,6 +74,12 @@ class Post(models.Model):
         through="Like",
     )
 
+    hashtags = models.ManyToManyField(
+        "Hashtag",
+        blank=True,
+        related_name="posts",
+    )
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -143,3 +149,10 @@ class Like(models.Model):
 
     def __str__(self) -> str:
         return f"Like by {self.user.username} on post {self.post.id}"
+
+
+class Hashtag(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    def __str__(self) -> str:
+        return f"#{self.name}"

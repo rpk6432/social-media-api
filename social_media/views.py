@@ -2,8 +2,10 @@ from typing import Type
 
 from django.contrib.auth import get_user_model
 from django.db.models import QuerySet, Count
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.filters import SearchFilter
 from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import (
     IsAuthenticated,
@@ -19,6 +21,7 @@ from rest_framework_simplejwt.tokens import (
     TokenError,
 )
 
+from social_media.filters import PostFilter
 from social_media.models import Post, Comment, Like, Follow
 from social_media.permissions import IsOwnerOrReadOnly
 from social_media.serializers import (
@@ -38,6 +41,8 @@ User = get_user_model()
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.select_related("profile")
+    filter_backends = (SearchFilter,)
+    search_fields = ("username", "email")
 
     def get_serializer_class(self) -> Type[Serializer]:
         if self.action == "create":
@@ -141,6 +146,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class PostViewSet(viewsets.ModelViewSet):
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = PostFilter
+
     def _get_base_queryset(self) -> QuerySet:
         return Post.objects.annotate(
             like_count=Count("likes", distinct=True),
