@@ -156,9 +156,7 @@ class PostViewSet(viewsets.ModelViewSet):
         ).select_related("user__profile")
 
     def _get_feed_queryset(self) -> QuerySet:
-        """
-        Return queryset for the user's personalized feed.
-        """
+        """Return queryset for user's personalized feed."""
         user = self.request.user
         following_ids = user.following.values_list("following_id", flat=True)
         author_ids = list(following_ids) + [user.id]
@@ -166,21 +164,21 @@ class PostViewSet(viewsets.ModelViewSet):
         return self._get_base_queryset().filter(user_id__in=author_ids)
 
     def get_queryset(self) -> QuerySet:
-        if self.action == "list":
-            user = self.request.user
-            if user.is_authenticated:
-                return self._get_feed_queryset()
-            return self._get_base_queryset().none()
+        base_qs = self._get_base_queryset()
 
         if self.action == "retrieve":
-            return self._get_base_queryset().prefetch_related(
-                "comments__user__profile"
-            )
+            return base_qs.prefetch_related("comments__user__profile")
 
-        return self._get_base_queryset()
+        if self.action == "feed":
+            return self._get_feed_queryset()
+
+        if self.action == "liked":
+            return base_qs.filter(likes=self.request.user)
+
+        return base_qs
 
     def get_serializer_class(self) -> Type[Serializer]:
-        if self.action in ["list", "all_posts"]:
+        if self.action in ["list", "feed", "liked"]:
             return PostListSerializer
         if self.action == "retrieve":
             return PostDetailSerializer
@@ -197,23 +195,18 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     @action(
-        methods=["GET"],
-        detail=False,
-        permission_classes=[IsAuthenticated],
-        url_path="all",
+        methods=["GET"], detail=False, permission_classes=[IsAuthenticated]
     )
-    def all_posts(self, request: Request, *args, **kwargs) -> Response:
-        """
-        Custom action for the global feed
-        """
-        queryset = self.get_queryset()
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+    def feed(self, request: Request, *args, **kwargs) -> Response:
+        """Retrieve user's personalized post feed."""
+        return self.list(request, *args, **kwargs)
 
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+    @action(
+        methods=["GET"], detail=False, permission_classes=[IsAuthenticated]
+    )
+    def liked(self, request: Request, *args, **kwargs) -> Response:
+        """Retrieve user's liked posts."""
+        return self.list(request, *args, **kwargs)
 
     @action(
         methods=["POST"], detail=True, permission_classes=[IsAuthenticated]
