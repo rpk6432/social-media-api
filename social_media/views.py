@@ -1,7 +1,9 @@
 from typing import Type
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import QuerySet, Count
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -21,10 +23,10 @@ from rest_framework_simplejwt.tokens import (
     TokenError,
 )
 
-from social_media.filters import PostFilter
-from social_media.models import Post, Comment, Like, Follow
-from social_media.permissions import IsOwnerOrReadOnly
-from social_media.serializers import (
+from .filters import PostFilter
+from .models import Post, Comment, Like, Follow
+from .permissions import IsOwnerOrReadOnly
+from .serializers import (
     UserRegistrationSerializer,
     ProfileSerializer,
     UserSerializer,
@@ -35,6 +37,7 @@ from social_media.serializers import (
     FollowerSerializer,
     FollowingSerializer,
 )
+from .tasks import publish_post
 
 User = get_user_model()
 
@@ -192,7 +195,17 @@ class PostViewSet(viewsets.ModelViewSet):
         return [permission() for permission in self.permission_classes]
 
     def perform_create(self, serializer: Serializer) -> None:
-        serializer.save(user=self.request.user)
+        scheduled_at = serializer.validated_data.get("scheduled_at")
+
+        if scheduled_at and scheduled_at > timezone.now():
+            post = serializer.save(user=self.request.user, is_published=False)
+            transaction.on_commit(
+                lambda: publish_post.apply_async(
+                    args=[post.id], eta=scheduled_at
+                )
+            )
+        else:
+            serializer.save(user=self.request.user, is_published=True)
 
     @action(
         methods=["GET"], detail=False, permission_classes=[IsAuthenticated]

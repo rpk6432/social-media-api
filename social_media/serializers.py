@@ -60,10 +60,19 @@ class CommentSerializer(serializers.ModelSerializer):
 
 
 class PostSerializer(serializers.ModelSerializer):
+    is_published = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = Post
-        fields = ("id", "content", "image", "created_at")
-        read_only_fields = ("id", "created_at")
+        fields = (
+            "id",
+            "content",
+            "image",
+            "created_at",
+            "scheduled_at",
+            "is_published",
+        )
+        read_only_fields = ("id", "created_at", "is_published")
 
 
 class PostListSerializer(PostSerializer):
