@@ -154,8 +154,8 @@ class PostViewSet(viewsets.ModelViewSet):
 
     def _get_base_queryset(self) -> QuerySet:
         return Post.objects.annotate(
-            like_count=Count("likes", distinct=True),
-            comment_count=Count("comments", distinct=True),
+            likes_count=Count("likes", distinct=True),
+            comments_count=Count("comments", distinct=True),
         ).select_related("user__profile")
 
     def _get_feed_queryset(self) -> QuerySet:
