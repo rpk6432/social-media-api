@@ -5,6 +5,12 @@ from django.db import transaction
 from django.db.models import QuerySet, Count
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import (
+    extend_schema_view,
+    extend_schema,
+    OpenApiResponse,
+    OpenApiExample,
+)
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.filters import SearchFilter
@@ -42,6 +48,83 @@ from .tasks import publish_post
 User = get_user_model()
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List users",
+        description=(
+            "Retrieve a list of users.\n\n"
+            "Supports search by username or email.\n\n"
+            "### Examples\n"
+            "- Search by username:\n"
+            "`GET /api/users/?search=user1`\n\n"
+            "- Search by email:\n"
+            "`GET /api/users/?search=user1@example.com`"
+        ),
+        responses=UserSerializer,
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve a user",
+        description="Retrieve detailed information about a specific user.",
+        responses=UserSerializer,
+    ),
+    create=extend_schema(
+        summary="Register a new user",
+        description="Create a new user account.",
+        request=UserRegistrationSerializer,
+        responses={201: UserSerializer},
+    ),
+    update=extend_schema(
+        summary="Update a user",
+        description="Update all fields of a user. Only the owner can update their account.",
+        request=UserSerializer,
+        responses={200: UserSerializer},
+    ),
+    partial_update=extend_schema(
+        summary="Partially update a user",
+        description="Update one or more fields of a user. Only the owner can update their account.",
+        request=UserSerializer,
+        responses={200: UserSerializer},
+    ),
+    destroy=extend_schema(
+        summary="Delete a user",
+        description="Delete a specific user account. Only the owner can delete their account.",
+        responses={
+            204: OpenApiResponse(description="User deleted successfully.")
+        },
+    ),
+    follow=extend_schema(
+        summary="Follow a user",
+        description="Follow a specific user by their ID.",
+        responses={
+            200: OpenApiResponse(
+                description="Successfully followed the user."
+            ),
+            400: OpenApiResponse(
+                description="You cannot follow yourself or you already follow this user."
+            ),
+        },
+    ),
+    unfollow=extend_schema(
+        summary="Unfollow a user",
+        description="Unfollow a specific user by their ID.",
+        responses={
+            200: OpenApiResponse(
+                description="Successfully unfollowed the user."
+            ),
+            400: OpenApiResponse(description="You don't follow this user."),
+        },
+    ),
+    followers=extend_schema(
+        summary="List followers",
+        description="Get a list of users who follow the specified user.",
+        responses=FollowerSerializer,
+    ),
+    following=extend_schema(
+        summary="List following",
+        description="Get a list of users the specified user is following.",
+        responses=FollowingSerializer,
+    ),
+)
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.select_related("profile")
     filter_backends = (SearchFilter,)
@@ -63,6 +146,24 @@ class UserViewSet(viewsets.ModelViewSet):
             self.permission_classes = [IsAuthenticated]
         return [permission() for permission in self.permission_classes]
 
+    @extend_schema(
+        methods=["GET"],
+        summary="Retrieve current user",
+        description="Return the authenticated user's full data.",
+        responses=UserSerializer,
+    )
+    @extend_schema(
+        methods=["PUT"],
+        summary="Update current user profile",
+        request=ProfileSerializer,
+        responses=UserSerializer,
+    )
+    @extend_schema(
+        methods=["PATCH"],
+        summary="Partially update current user profile",
+        request=ProfileSerializer,
+        responses=UserSerializer,
+    )
     @action(
         detail=False,
         methods=["get", "put", "patch"],
@@ -148,6 +249,96 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List posts",
+        description=(
+            "Retrieve a list of posts.\n\n"
+            "Supports filtering by hashtag.\n\n"
+            "### Example\n"
+            "`GET /api/posts/?hashtag=example`"
+        ),
+        responses=PostListSerializer,
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve a post",
+        description="Retrieve detailed information about a specific post.",
+        responses=PostDetailSerializer,
+    ),
+    create=extend_schema(
+        summary="Create a post",
+        description=(
+            "Create a new post.\n\n"
+            "If `scheduled_at` is provided and is in the future, "
+            "the post will be scheduled. Otherwise it is published immediately.\n\n"
+            "### Examples\n"
+            "- Immediate publish:\n"
+            '```json\n{\n  "content": "Some text"\n}\n```\n\n'
+            "- Scheduled publish:\n"
+            '```json\n{\n  "content": "Some text",\n  "scheduled_at": "2029-01-01T12:00:00Z"\n}\n```'
+        ),
+        request=PostSerializer,
+        responses={201: PostSerializer},
+    ),
+    update=extend_schema(
+        summary="Update a post",
+        description="Update all fields of a post.",
+        request=PostSerializer,
+        responses={200: PostSerializer},
+    ),
+    partial_update=extend_schema(
+        summary="Partially update a post",
+        description="Update one or more fields of a post.",
+        request=PostSerializer,
+        responses={200: PostSerializer},
+    ),
+    destroy=extend_schema(
+        summary="Delete a post",
+        description="Delete a specific post.",
+        responses={
+            204: OpenApiResponse(description="Post deleted successfully.")
+        },
+    ),
+    feed=extend_schema(
+        summary="User feed",
+        description=(
+            "Retrieve personalized feed containing posts from the user "
+            "and users they follow.\n\n"
+            "Supports filtering by hashtag.\n\n"
+            "### Example\n"
+            "`GET /api/posts/feed/?hashtag=example`"
+        ),
+        responses=PostListSerializer,
+    ),
+    liked=extend_schema(
+        summary="Liked posts",
+        description=(
+            "Retrieve posts liked by the current user.\n\n"
+            "Supports filtering by hashtag.\n\n"
+            "### Example\n"
+            "`GET /api/posts/liked/?hashtag=example`"
+        ),
+        responses=PostListSerializer,
+    ),
+    like=extend_schema(
+        summary="Like a post",
+        description="Add a like to a specific post.",
+        responses={
+            200: OpenApiResponse(description="Post liked successfully."),
+            400: OpenApiResponse(description="You already liked this post."),
+        },
+    ),
+    unlike=extend_schema(
+        summary="Unlike a post",
+        description="Remove a like from a specific post.",
+        responses={
+            200: OpenApiResponse(description="Like removed successfully."),
+            400: OpenApiResponse(
+                description="You have not liked this post yet."
+            ),
+        },
+    ),
+)
 class PostViewSet(viewsets.ModelViewSet):
     filter_backends = (DjangoFilterBackend,)
     filterset_class = PostFilter
@@ -259,6 +450,19 @@ class PostViewSet(viewsets.ModelViewSet):
         )
 
 
+@extend_schema_view(
+    list=extend_schema(summary="List comments"),
+    retrieve=extend_schema(summary="Retrieve a comment"),
+    create=extend_schema(summary="Create a comment"),
+    update=extend_schema(summary="Update a comment"),
+    partial_update=extend_schema(summary="Partially update a comment"),
+    destroy=extend_schema(
+        summary="Delete a comment",
+        responses={
+            204: OpenApiResponse(description="Comment deleted successfully.")
+        },
+    ),
+)
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
 
@@ -282,12 +486,43 @@ class CommentViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user, post=post)
 
 
+@extend_schema(
+    description="Logout endpoint. Accepts a refresh token and blacklists it.",
+    request={
+        "application/json": {
+            "type": "object",
+            "properties": {
+                "refresh": {"type": "string", "example": "your_refresh_token"}
+            },
+            "required": ["refresh"],
+        }
+    },
+    responses={
+        200: OpenApiResponse(
+            description="Successfully logged out.",
+            examples=[
+                OpenApiExample(
+                    "Logout success",
+                    value={"detail": "You have been logged out."},
+                )
+            ],
+        ),
+        400: OpenApiResponse(
+            description="Invalid or missing token.",
+            examples=[
+                OpenApiExample(
+                    "Missing token",
+                    value={"detail": "Refresh token is required."},
+                ),
+                OpenApiExample(
+                    "Invalid token",
+                    value={"detail": "Token is invalid or expired."},
+                ),
+            ],
+        ),
+    },
+)
 class LogoutView(APIView):
-    """
-    Logout endpoint.
-    Accepts a refresh token and blacklists it.
-    """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request) -> Response:
